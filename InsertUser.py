@@ -1,92 +1,95 @@
 import psycopg2
-from datetime import datetime
+from psycopg2 import sql
+from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 import random
 import string
 
-db_params = {
-    'dbname': 'banking_db',
-    'user': 'postgres',
-    'password': 'Loloko1234',
-    'host': 'localhost',
-    'port': '5432'
-}
+# Database connection parameters
+dbname = "banking_db"
+user = "postgres"
+password = "Loloko1234"
+host = "localhost"
+port = "5432"
 
-def generate_account_number(length=10):
-    return ''.join(random.choices(string.digits, k=length))
+# Connect to PostgreSQL
+conn = psycopg2.connect(dbname=dbname, user=user, password=password, host=host, port=port)
+conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
+cur = conn.cursor()
 
-def create_user(login, password):
-    conn = None
-    cursor = None
-    try:
-        conn = psycopg2.connect(**db_params)
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO users (login, password, created_at, updated_at) VALUES (%s, %s, %s, %s) RETURNING id;",
-            (login, password, datetime.now(), datetime.now())
-        )
-        user_id = cursor.fetchone()[0]
-        conn.commit()
-        print(f"User created with ID: {user_id}")
-        return user_id
-    except Exception as e:
-        print(f"Error: {e}")
-        return None
-    finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
+# Create users table if it doesn't exist
+cur.execute("""
+CREATE TABLE IF NOT EXISTS users (
+    id SERIAL PRIMARY KEY,
+    login VARCHAR(50) UNIQUE NOT NULL,
+    password VARCHAR(50) NOT NULL
+)
+""")
 
-def create_account(user_id, balance):
-    conn = None
-    cursor = None
-    try:
-        conn = psycopg2.connect(**db_params)
-        cursor = conn.cursor()
-        account_number = generate_account_number()
-        cursor.execute(
-            "INSERT INTO accounts (user_id, account_number, balance, created_at, updated_at) VALUES (%s, %s, %s, %s, %s) RETURNING id;",
-            (user_id, account_number, balance, datetime.now(), datetime.now())
-        )
-        account_id = cursor.fetchone()[0]
-        conn.commit()
-        print(f"Account created with ID: {account_id} and Account Number: {account_number}")
-        return account_id
-    except Exception as e:
-        print(f"Error: {e}")
-        return None
-    finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
+# Create accounts table if it doesn't exist
+cur.execute("""
+CREATE TABLE IF NOT EXISTS accounts (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id),
+    account_number VARCHAR(20) UNIQUE NOT NULL,
+    balance DECIMAL(10, 2) DEFAULT 0
+)
+""")
 
-def create_transaction(account_id, amount, description):
-    conn = None
-    cursor = None
-    try:
-        conn = psycopg2.connect(**db_params)
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO transactions (account_id, amount, transaction_date, description) VALUES (%s, %s, %s, %s) RETURNING id;",
-            (account_id, amount, datetime.now(), description)
-        )
-        transaction_id = cursor.fetchone()[0]
-        conn.commit()
-        print(f"Transaction created with ID: {transaction_id}")
-        return transaction_id
-    except Exception as e:
-        print(f"Error: {e}")
-        return None
-    finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
+# Create loans table if it doesn't exist
+cur.execute("""
+CREATE TABLE IF NOT EXISTS loans (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id),
+    amount DECIMAL(10, 2),
+    status VARCHAR(20),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)
+""")
 
-if __name__ == "__main__":
-    user_id = create_user('1234', '1234')
+# Function to generate a random account number
+def generate_account_number():
+    return ''.join(random.choices(string.digits, k=10))
+
+# Sample user data
+users = [
+    ("john", "password123"),
+    ("alice", "securepass"),
+    ("bob", "pass1234")
+]
+
+# Insert users and create accounts
+for login, password in users:
+    cur.execute("INSERT INTO users (login, password) VALUES (%s, %s) ON CONFLICT (login) DO NOTHING RETURNING id", (login, password))
+    user_id = cur.fetchone()
     if user_id:
-        account_id = create_account(user_id, 1300)
-        if account_id:
-            create_transaction(account_id, 100, 'Initial deposit')
+        user_id = user_id[0]
+        account_number = generate_account_number()
+        cur.execute("INSERT INTO accounts (user_id, account_number, balance) VALUES (%s, %s, %s)", (user_id, account_number, 1000))
+        print(f"User {login} inserted with account number {account_number} and initial balance of $1000")
+    else:
+        print(f"User {login} already exists")
+
+# Sample loan data
+loans = [
+    ("john", 500, "approved"),
+    ("alice", 1000, "pending"),
+    ("bob", 750, "approved")
+]
+
+# Insert sample loans
+for login, amount, status in loans:
+    cur.execute("SELECT id FROM users WHERE login = %s", (login,))
+    user_id = cur.fetchone()
+    if user_id:
+        user_id = user_id[0]
+        cur.execute("INSERT INTO loans (user_id, amount, status) VALUES (%s, %s, %s)", (user_id, amount, status))
+        print(f"Loan of ${amount} for user {login} inserted with status: {status}")
+    else:
+        print(f"User {login} not found, loan not inserted")
+
+# Commit changes and close connection
+conn.commit()
+cur.close()
+conn.close()
+
+print("Sample data insertion completed.")
