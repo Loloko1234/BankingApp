@@ -41,6 +41,8 @@ CREATE TABLE IF NOT EXISTS loans (
     id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES users(id),
     amount DECIMAL(10, 2),
+    interest_rate DECIMAL(5, 2),
+    remaining_balance DECIMAL(10, 2),
     status VARCHAR(20),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )
@@ -52,9 +54,7 @@ def generate_account_number():
 
 # Sample user data
 users = [
-    ("john", "password123"),
-    ("alice", "securepass"),
-    ("bob", "pass1234")
+    ("john4", "password123"),
 ]
 
 # Insert users and create accounts
@@ -71,9 +71,7 @@ for login, password in users:
 
 # Sample loan data
 loans = [
-    ("john", 500, "approved"),
-    ("alice", 1000, "pending"),
-    ("bob", 750, "approved")
+    ("john4", 500, "approved"),
 ]
 
 # Insert sample loans
@@ -86,6 +84,28 @@ for login, amount, status in loans:
         print(f"Loan of ${amount} for user {login} inserted with status: {status}")
     else:
         print(f"User {login} not found, loan not inserted")
+
+# Dodaj na końcu skryptu InsertUser.py
+
+# Sprawdź, czy kolumna interest_rate istnieje
+cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='loans' AND column_name='interest_rate'")
+if not cur.fetchone():
+    # Jeśli kolumna nie istnieje, dodaj ją
+    cur.execute("ALTER TABLE loans ADD COLUMN interest_rate DECIMAL(5, 2) DEFAULT 5.0")
+    print("Dodano kolumnę interest_rate do tabeli loans")
+
+# Sprawdź, czy kolumna remaining_balance istnieje
+cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='loans' AND column_name='remaining_balance'")
+if not cur.fetchone():
+    # Jeśli kolumna nie istnieje, dodaj ją
+    cur.execute("ALTER TABLE loans ADD COLUMN remaining_balance DECIMAL(10, 2)")
+    print("Dodano kolumnę remaining_balance do tabeli loans")
+
+# Zaktualizuj istniejące wiersze, ustawiając wartości domyślne
+cur.execute("UPDATE loans SET interest_rate = 5.0, remaining_balance = amount WHERE interest_rate IS NULL OR remaining_balance IS NULL")
+print("Zaktualizowano istniejące wiersze w tabeli loans")
+
+conn.commit()
 
 # Commit changes and close connection
 conn.commit()
